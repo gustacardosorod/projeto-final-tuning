@@ -57,66 +57,52 @@ FROM logs_acesso
 WHERE data_hora BETWEEN '2024-06-01' AND '2025-12-30'
 GROUP BY acao, DATE(data_hora);
 ```
-1. Diagnóstico (Before)
-Problema 1: JOIN sem índices
-Consultas envolvendo clientes, vendas e itens_venda faziam varredura completa.
+## Diagnóstico – Before
 
-Não existiam índices em cliente_id, venda_id, produto_id.
-Evidência EXPLAIN:
+- **JOIN sem índices**
+  - Tabelas envolvidas: `clientes`, `vendas`, `items_venda`
+  - Problema: consultas executavam FULL SCAN
+  - Ausência de índices nos campos:
+    - `cliente_id`
+    - `venda_id`
+    - `produto_id`
+  - **EXPLAIN evidência:** `type: ALL`, `possible_keys: NULL`
 
-type: ALL
-possible_keys: NULL
-rows: 500000
+- **Filtro por data + status sem índice**
+  - Consultas com período + status faziam varredura completa
+  - **EXPLAIN evidência:** `Using where; Using temporary; Using filesort`
 
-Problema 2: Falta de índice em filtros por data + status
-Consultas que filtram período + status faziam FULL SCAN.
-Evidência:
+- **Logs lentos**
+  - A tabela `logs_acesso` consultava `data_hora` sem índice
+  - **EXPLAIN evidência:** ausência de `possible_keys`
+    
+  Proposta de Otimização
 
-Extra: Using where; Using temporary; Using filesort
-Problema 3: Logs lentos (campo temporal sem índice)
-O campo data_hora da tabela logs_acesso era consultado sem índice.
+- **Criação de índices em FKs**
+  - Melhora JOINs
+  - Reduz varreduras completas
 
-EXPLAIN:
+- **Índice composto `(data_venda, status)`**
+  - Acelera filtros combinados
+  - Melhora seletividade
 
-text
-Copiar código
-possible_keys: NULL
-type: ALL
-Benchmark Antes da Otimização
-Consulta	Tempo (ms)
-Relatório de vendas	1200 ms
-Produtos mais vendidos	980 ms
-Logs por período	540 ms
+- **Índice em `data_hora`**
+  - Otimiza relatórios cronológicos
+  - Acelera busca por período
 
-4. Proposta de Otimização
-Gargalo	Solução Técnica	Justificativa
-JOIN sem índice	Criar índices em FKs	Reduz FULL SCAN e acelera JOIN
-Filtro sem índice	Índice composto (data_venda, status)	Filtros mais seletivos
-Logs lentos	Índice em data_hora	Acelera relatórios por data
-
-Índice composto aplicado:
-
-sql
-Copiar código
+### Exemplo aplicado
+```sql
 CREATE INDEX idx_vendas_data_status 
 ON vendas(data_venda, status);
+````
 
-5. Implementação & Resultados (After)
-Novo plano de execução (EXPLAIN After)
-text
-Copiar código
-type: ref
-possible_keys: idx_vendas_data_status
-rows: 1200
-Extra: Using index condition
+| Consulta                 | Antes (ms) | Depois (ms) | Melhoria |
+|--------------------------|------------|-------------|----------|
+| Relatório de vendas      | 1200       | 120         | 90%      |
+| Produtos mais vendidos   | 980        | 110         | 88%      |
+| Logs por período         | 540        | 60          | 89%      |
 
-Benchmark Comparativo
-Consulta	Antes (ms)	Depois (ms)	Melhoria
-Relatório de vendas	1200	120	 90%
-Produtos mais vendidos	980	110	88%
-Logs por período	540	60	 89%
-
-6. Conclusão
+## 6. Conclusão
 Este estudo demonstrou, de forma prática, que índices corretamente aplicados reduzem drasticamente o tempo de consultas SQL, sem necessidade de upgrades de hardware.
 Aprendizados principais:
 
