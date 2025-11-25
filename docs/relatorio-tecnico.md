@@ -2,7 +2,7 @@
 ### Centro Universitário Salesiano — Engenharia de Software (6º Período)  
 **Aluno:** Gustavo Cardoso Rodrigues  
 **Professor:** Alexandre B. Souza  
-**Data:** 2025  
+25/11/2025  
 
 ---
 
